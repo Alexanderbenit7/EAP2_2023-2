@@ -1,2 +1,2 @@
 # EAP2_2023-2
-Repository for the course "Statistics for Political Analysis 2". Faculty of Social Sciences PUCP
+Repositorio para el curso Estadística para el Análisis Político 2. Facultad de Ciencias Sociales PUCP.
