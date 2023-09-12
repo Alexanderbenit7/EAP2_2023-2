@@ -1,0 +1,106 @@
+---
+title: 'Solucionario: PL3'
+author: 'Jefes de práctica: Alexander Benites, Chiara Zamora y Airám Bello'
+date: "Ciclo 2023-2"
+subtitle: 'Curso: POL304 - Estadística para el análisis político 2'
+output:
+  html_document: default
+  pdf_document: default
+---
+
+Cargamos los datos:
+
+```{r}
+library(summarytools)
+library(kableExtra)
+library(rio)
+library(magrittr)
+library(margins)
+```
+
+
+```{r}
+data = import("https://github.com/Alexanderbenit7/EAP2_2023-2/raw/main/data/data_2021_voting_final.xlsx")
+
+#Formato:
+data$PRIOR = factor(data$PRIOR, levels = c(0,1), labels = c("NoPriorizado","Priorizado"))
+data$PC_VICT = factor(data$PC_VICT, levels = c(0,1), labels = c("No","Yes"))
+
+str(data)
+```
+
+
+### 1. Pregunta 1. Responda a lo siguiente:
+
+1.1. ¿Cual es la probabilidad de que Pedro Castillo haya ganado en un distrito priorizado (con una tasa de personas mayores a 80 años por encima del promedio)
+
+1.2. ¿Cuál es el valor del odds (De que sea priorizado/De que NO sea priorizado)
+
+PC_VICT: Distrito en el que ganó Pedro Castillo
+PRIOR: Distrito con una tasa de personas mayores a 80 años por encima del promedio global
+
+```{r}
+dep=data$PC_VICT # a la fila
+ind=data$PRIOR # a la columna
+
+dataPRIORTable=table(dep,ind,dnn = c('PC','PRIOR'))
+
+### suma por columna
+addmargins(dataPRIORTable,margin = 1)%>%
+    kable(caption = "Tabla de Contingencia: 'Priorizado' y 'Victoria PC'")%>%
+    kableExtra::kable_styling(full_width = F)
+```
+
+```{r}
+#Valor de probabilidad:
+ProbPC_Prior=dataPRIORTable[2,2]/sum(dataPRIORTable[,2])
+MASS::fractions(ProbPC_Prior)
+ProbPC_Prior
+
+#Valor del ODDS:
+
+ODDSPC_Prior=dataPRIORTable[2,2]/dataPRIORTable[1,2]
+MASS::fractions(ODDSPC_Prior)
+ODDSPC_Prior
+```
+
+*Respuesta: 0.819 y 4.52*
+
+
+### 2. Pregunta 2. Construya un modelo que responda a la siguiente hipotesis:
+
+H: La victoria de Castillo en los distritos se explica por la tasa de personas que se identifican como indígenas (TASA_INDIGENA), la tasa de personas que no saben leer ni escribir (TASA_NOLEER) y si el distrito es uno priorizado (PRIOR).
+
+```{r}
+### No se olviden de declara la semilla
+set.seed(2023)
+
+### first hypothesis
+h3=formula(PC_VICT ~ PRIOR + TASA_INDIGENA + TASA_NOLEER)
+
+#regression
+rlog3=glm(h3, data=data,family = binomial)
+
+#results
+summary(rlog3)
+```
+
+*Respuesta: Todas las variables son estadísticamente significativas y con un sentido positivo.*
+
+
+### 3. Pregunta 3. ¿Cual es el impacto promedio de la variable TASA_INDIGENA en la probabilidad de que Pedro Castillo gane en un distrito?
+
+```{r}
+marginalsData=summary(margins(rlog3)) 
+marginalsData%>% kable(caption = "Efectos Marginales Promedio (AME)- Modelo III") %>%kableExtra::kable_styling(full_width = T)
+```
+
+```{r}
+library(ggplot2)
+base= ggplot(marginalsData,aes(x=factor, y=AME)) + geom_point()
+base +  geom_errorbar(aes(ymin=lower, ymax=upper))
+```
+
+*Respuesta: El aumento de un punto en la variable TASA_INDIGENA aumenta la probabilidad en 0.538*
+
+
