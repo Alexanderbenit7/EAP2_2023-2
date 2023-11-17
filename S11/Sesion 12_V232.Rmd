@@ -1,0 +1,189 @@
+---
+title: "Sesión 12. Introducción al Procesamiento del Lenguaje Natural (NLP)"
+author: 'Jefes de práctica: Airam Bello, Alexander Benites y Chiara Zamora'
+date: "Ciclo 2023-2"
+subtitle: 'Curso: POL304 - Estadística para el análisis político 2'
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r,echo=FALSE, out.width="40%",fig.align="center"}
+knitr::include_graphics("logoPUCP.png") 
+```
+
+El Procesamiento del Lenguaje Natural (NLP), en inglés Natural Language Processing, es un campo de las ciencias de la computación e ingeniería que se ocupa de facilitar la interacción humana con las máquinas a través del uso del lenguaje natural o lenguaje humano. El NLP ocurre a través de un proceso en el cual la máquina, que solamente entiende un lenguaje binario de ceros y unos, es entrenada para entender el lenguaje humano. En ese sentido, tratar computacionalmente una lengua implica un proceso de modelización matemática.
+
+Hoy vamos a ver una introducción al tema, utilizando datos de Twitter.
+
+
+### 3. Exploración 
+
+Debido a las restricciones relacionadas con el pago, actualmente estamos utilizando una base de datos previamente generada que incluye tanto tuits propios como retuits de Vladimir Cerron. 
+
+```{r}
+cerron = import("cerron.csv")
+```
+
+```{r}
+max(cerron$created_at); min(cerron$created_at)
+head(cerron$text)
+tail(cerron$text)
+```
+
+```{r}
+cerron %>% group_by(is_retweet) %>% summarise( count = n())
+table(cerron$is_retweet)
+```
+
+```{r}
+cerron$created_at = as.Date(cerron$created_at, format = "%Y%m%d") #Formato
+cerron$año = year(cerron$created_at) #Agregando el año
+cerron$mes = month(cerron$created_at) #Agregando el mes
+cerron$añomes = as.factor(format(cerron$created_at,"%Y-%m")) #Agregando el año y el mes
+a=cerron %>% group_by(añomes) %>% summarise( count = n())
+```
+
+```{r echo=FALSE,message=FALSE,eval=TRUE,fig.show='hold',fig.width=6.5,fig.height=4.5}
+ggplot(a, aes(x=añomes, y=count)) + 
+  geom_bar(stat = "identity", fill="steelblue") +
+  labs(title="Actividad de Vladimir Cerrón en Twitter, por mes y año", y="Número de tweets", x="Fecha (Año y mes)") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(panel.background=element_rect(fill = "white", colour = "white")) +
+  theme(axis.text.x = element_text(angle = 45)) +
+  geom_text(aes(label=count), vjust=-1, color="black", size=3)
+```
+
+
+##¢ 4.Preprocesamiento respectivo (limpieza)
+
+Vamos a eliminar inconsistencias en el corpus:
+
+```{r}
+#corpus
+textolimpio = cerron$text
+micorpus = Corpus(VectorSource(textolimpio))
+content(micorpus[1:10])
+
+#convertir a minúsculas
+micorpus = tm_map(micorpus,content_transformer(tolower)) 
+
+#remover URLs 
+removerURL = function(x) gsub("http[^[:space:]]*", "", x)
+micorpus = tm_map(micorpus, content_transformer(removerURL))
+
+#remover tildes
+removerTILDE = function(x) chartr('áéíóú','aeiou',x)
+micorpus = tm_map(micorpus, removerTILDE)
+
+#eliminar ?s
+remover = function(x) chartr('?','n',x)
+micorpus = tm_map(micorpus, remover)
+
+#remover @otros usuarios
+removerUSUARIOS <- function(x) gsub("@\\w+", "", x)
+micorpus = tm_map(micorpus, removerUSUARIOS)
+
+# Quitar la puntuación
+micorpus = tm_map(micorpus, removePunctuation)
+
+#quitar números
+micorpus = tm_map(micorpus, removeNumbers)
+
+#quitar stopwords
+micorpus = tm_map(micorpus, removeWords,c(stopwords("spanish")))
+
+#quitar espacios en blanco
+micorpus = tm_map(micorpus, stripWhitespace)
+
+#Remover retweets: Esta era la forma antigua. Ahora se puede filtrar al inicio los retweets
+removerRETWEETS <- function(x) gsub("(RT|via)((?:\\b\\W*@\\w+)+)", "", x)
+micorpus <- tm_map(micorpus, removerRETWEETS)
+content(micorpus[1:10])
+
+#eliminar emoticones
+removerEMO = function(x) gsub("[^\x01-\x7F]", "", x)
+micorpus = tm_map(micorpus, content_transformer(removerEMO))
+content(micorpus[1:10])
+```
+
+### 5. Ejecución de códigos para exploración
+
+```{r}
+term <- TermDocumentMatrix(micorpus)
+inspect(term)
+```
+
+Ahora podemos ver la ocurrencia de ciertos términos en los posts de Cerrón:
+
+```{r}
+findFreqTerms(term,lowfreq = 20) #Exploramos los términos que tienen al menos 20 apariciones
+```
+
+```{r}
+tw <- as.matrix(term) # creamos un data frame con las palabras y sus frecuencias
+wf <- sort(rowSums(tw),decreasing=TRUE)
+df <- data.frame(word = names(wf), freq=wf)
+df1 <- subset(df, df$freq >= 50) # palabras que tienen más de 50 repeticiones
+df1
+```
+
+Graficamos:
+
+```{r}
+ggplot(df1, aes( x= reorder(word,-freq), y=freq )) + geom_bar(stat="identity", fill="steelblue") +
+  xlab("Términos") + ylab("Frecuencia") + theme(axis.text=element_text(size=7)) + coord_flip() + theme_minimal()
+```
+
+Podemos hacer una nube de palabras con la ocurrencia de las palabras:
+
+```{r echo=FALSE,message=FALSE,eval=TRUE,fig.show='hold',fig.width=6,fig.height=5}
+termcount <- data.frame(freq = apply(term,1,sum))
+head(termcount)
+wordcloud(df$word, df$freq, random.order=FALSE, min.freq=10, colors=brewer.pal(8, "Dark2"))
+```
+
+
+### 6. Modelamiento
+
+Podemos encontrar las palabras asociadas a algunos términos:
+
+```{r}
+findAssocs(term, c("peru","libre","castillo","pueblo"), c(0.30))
+```
+
+También podemos agruparlas en conglomerados:
+
+```{r}
+tdm2 <- removeSparseTerms(term, sparse = 0.95)
+m2 <- as.matrix(tdm2)
+distMatrix <- dist(scale(m2))
+fit <- hclust(distMatrix, method = "ward.D")
+```
+
+```{r}
+plot(as.dendrogram(fit))
+rect.hclust(fit, k = 3)
+```
+
+Finalmente, se puede realizar un análisis de sentimientos de los tuits.
+
+```{r}
+sentimientos <- analyzeSentiment(textolimpio,language = "spanish")
+
+sentimientos_final <- data.frame(textolimpio,
+                               sentiment = convertToDirection(sentimientos$SentimentGI))
+head(sentimientos_final)
+str(sentimientos_final)
+table(sentimientos_final$sentiment)
+
+sentimientos_final$score <- 0
+sentimientos_final$score[sentimientos_final$sentiment == "positive"] <- 1
+sentimientos_final$score[sentimientos_final$sentiment == "negative"] <- -1
+
+head(sentimientos_final)
+table(sentimientos_final$score)
+```
+
+
+
